@@ -389,4 +389,3 @@ class BasicImageDownloader(ImageDownloaderMixin, BasicDownloader):
 
 class ProxiedImageDownloader(ImageDownloaderMixin, ProxiedDownloader):
     pass
-

@@ -9,7 +9,6 @@ from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from lxml import html as lxml_html
 from rq.job import Job
@@ -27,7 +26,7 @@ from journal.models.rating import Rating
 from users.views import query_identity
 
 from ..common.sites import AbstractSite, SiteManager
-from ..models import ExternalResource, Item, ItemCategory, SiteName, item_categories
+from ..models import ExternalResource, ItemCategory, SiteName, item_categories
 from ..search import ExternalSources, enqueue_fetch, get_fetch_lock, query_index
 from ..sites.rateyourmusic import RateYourMusic
 
@@ -248,7 +247,9 @@ def fetch_via_browser(request):
         # Get the site adapter
         site = SiteManager.get_site_by_url(url, detect_redirection=False)
         if not site or not isinstance(site, RateYourMusic):
-            return JsonResponse({"success": False, "error": "Invalid RateYourMusic URL"})
+            return JsonResponse(
+                {"success": False, "error": "Invalid RateYourMusic URL"}
+            )
 
         try:
             # Parse the HTML using lxml
@@ -272,22 +273,26 @@ def fetch_via_browser(request):
             item = site.get_item(allow_rematch=True)
             if not item:
                 from ..models import Album
+
                 item = Album.create_from_external_resource(resource)
 
-            return JsonResponse({
-                "success": True,
-                "item_url": item.url if item else "/",
-            })
+            return JsonResponse(
+                {
+                    "success": True,
+                    "item_url": item.url if item else "/",
+                }
+            )
 
         except Exception as e:
             import traceback
+
             traceback.print_exc()
-            return JsonResponse({
-                "success": False,
-                "error": f"Failed to parse HTML: {str(e)}"
-            })
+            return JsonResponse(
+                {"success": False, "error": f"Failed to parse HTML: {str(e)}"}
+            )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return JsonResponse({"success": False, "error": str(e)})

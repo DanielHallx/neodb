@@ -110,13 +110,11 @@
         <article>
           <div class="verification-container">
             <h3 style="text-align: center;">🔐 {% trans "Cloudflare Verification Required" %}</h3>
-
             <p style="text-align: center; margin: 1rem 0;">
               {% blocktrans with site="RateYourMusic" %}
                 {{ site }} is protected by Cloudflare. Your browser will help us bypass this protection.
               {% endblocktrans %}
             </p>
-
             <div class="verification-steps">
               <h4>{% trans "How it works:" %}</h4>
               <ol>
@@ -130,14 +128,11 @@
                 {% trans "This uses your browser to fetch the page, which automatically handles Cloudflare protection." %}
               </p>
             </div>
-
             <button class="verify-button" id="verify-btn" onclick="startVerification()">
               <i class="fa-solid fa-shield-halved"></i>
               {% trans "Start Browser Verification" %}
             </button>
-
             <div id="status-message" class="status-message" style="display: none;"></div>
-
             <div class="iframe-container" id="iframe-container" style="display: none;">
               <p style="text-align: center; margin-bottom: 1rem;">
                 <strong>{% trans "RateYourMusic is loading below. Please wait..." %}</strong>
@@ -152,7 +147,6 @@
       </aside>
     </main>
     {% include '_footer.html' %}
-
     <script>
       const RYM_URL = "{{ rym_url }}";
       const FETCH_VIA_BROWSER_URL = "{% url 'catalog:fetch_via_browser' %}";

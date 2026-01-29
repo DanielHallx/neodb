@@ -6,12 +6,9 @@ The user's browser loads the page and sends the HTML to the server for parsing.
 This is 100% reliable and doesn't require any anti-bot libraries.
 """
 
-import json
 import re
-from datetime import timedelta
 
 import dateparser
-from django.utils.dateparse import parse_duration
 from loguru import logger
 
 from catalog.common import *
@@ -56,9 +53,9 @@ class RateYourMusic(AbstractSite):
     def url_to_id(cls, url):
         """Extract ID from URL"""
         # Extract artist/album from URL
-        match = re.search(r'rateyourmusic\.com/release/album/(.+?)/?$', url)
+        match = re.search(r"rateyourmusic\.com/release/album/(.+?)/?$", url)
         if match:
-            return match.group(1).rstrip('/')
+            return match.group(1).rstrip("/")
         return None
 
     def scrape(self):
@@ -83,6 +80,8 @@ class RateYourMusic(AbstractSite):
         track_list = []
         image_url = None
         duration = 0
+        title = "Unknown Album"  # Initialize with default value
+        lang = "en"  # Initialize with default language
 
         try:
             # Extract album title from meta tags or page title
@@ -117,12 +116,16 @@ class RateYourMusic(AbstractSite):
             # Note: These selectors may need adjustment based on actual RYM HTML structure
 
             # Extract artist names from page
-            artist_elems = content.xpath("//a[@class='artist']//text() | //div[@class='album_info']//a[contains(@href, '/artist/')]//text()")
+            artist_elems = content.xpath(
+                "//a[@class='artist']//text() | //div[@class='album_info']//a[contains(@href, '/artist/')]//text()"
+            )
             if artist_elems and not artist:
                 artist = [a.strip() for a in artist_elems if a.strip()]
 
             # Extract release date
-            date_elems = content.xpath("//th[contains(text(), 'Released')]/following-sibling::td//text() | //span[@class='release_date']//text()")
+            date_elems = content.xpath(
+                "//th[contains(text(), 'Released')]/following-sibling::td//text() | //span[@class='release_date']//text()"
+            )
             if date_elems:
                 date_text = " ".join([d.strip() for d in date_elems if d.strip()])
                 # Try to parse various date formats
@@ -131,12 +134,16 @@ class RateYourMusic(AbstractSite):
                     release_date = dt.strftime("%Y-%m-%d")
 
             # Extract genres/tags
-            genre_elems = content.xpath("//a[@class='genre']//text() | //div[@class='release_pri_genres']//a//text()")
+            genre_elems = content.xpath(
+                "//a[@class='genre']//text() | //div[@class='release_pri_genres']//a//text()"
+            )
             if genre_elems:
                 genre = [g.strip() for g in genre_elems if g.strip()]
 
             # Extract track list
-            track_elems = content.xpath("//div[@class='tracklist']//div[@class='track']//span[@class='tracklist_title']//text() | //div[@id='tracks']//span[@class='rendered_text']//text()")
+            track_elems = content.xpath(
+                "//div[@class='tracklist']//div[@class='track']//span[@class='tracklist_title']//text() | //div[@id='tracks']//span[@class='rendered_text']//text()"
+            )
             if track_elems:
                 track_list = [t.strip() for t in track_elems if t.strip()]
 
@@ -155,12 +162,18 @@ class RateYourMusic(AbstractSite):
         pd = ResourceContent(
             metadata={
                 "title": title if title else "Unknown Album",
-                "localized_title": uniq(localized_title) if localized_title else [{"lang": "en", "text": "Unknown Album"}],
+                "localized_title": uniq(localized_title)
+                if localized_title
+                else [{"lang": "en", "text": "Unknown Album"}],
                 "localized_description": uniq(localized_desc),
                 "artist": list(set(artist)) if artist else [],
                 "genre": list(set(genre)) if genre else [],
                 "release_date": release_date,
-                "track_list": "\n".join([f"{i+1}. {t}" for i, t in enumerate(track_list)]) if track_list else None,
+                "track_list": "\n".join(
+                    [f"{i + 1}. {t}" for i, t in enumerate(track_list)]
+                )
+                if track_list
+                else None,
                 "duration": duration if duration > 0 else None,
                 "cover_image_url": image_url,
             }
