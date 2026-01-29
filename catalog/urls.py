@@ -182,6 +182,7 @@ urlpatterns = [
     path("search/", RedirectView.as_view(url="/search", query_string=True)),
     path("search/external", external_search, name="external_search"),
     path("fetch_refresh/<str:job_id>", fetch_refresh, name="fetch_refresh"),
+    path("fetch_via_browser", fetch_via_browser, name="fetch_via_browser"),
     path("refetch", refetch, name="refetch"),
     path("unlink", unlink, name="unlink"),
     path(

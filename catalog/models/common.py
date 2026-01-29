@@ -33,6 +33,7 @@ class SiteName(models.TextChoices):
     WikiData = "wikidata", _("WikiData")
     OpenLibrary = "openlibrary", _("Open Library")
     MusicBrainz = "musicbrainz", _("MusicBrainz")
+    RateYourMusic = "rateyourmusic", _("RateYourMusic")
     WorldCat = "worldcat", _("WorldCat")
 
 
@@ -76,6 +77,7 @@ class IdType(models.TextChoices):  # values must be in lowercase
         _("MusicBrainz Release Group"),
     )
     MusicBrainz_Release = "musicbrainz_release", _("MusicBrainz Release")
+    RateYourMusic_Album = "rateyourmusic_album", _("RateYourMusic Album")
     # DoubanBook_Author = "doubanbook_author", _("Douban Book Author")
     # DoubanCelebrity = "doubanmovie_celebrity", _("Douban Movie Celebrity")
     # Goodreads_Author = "goodreads_author", _("Goodreads Author")

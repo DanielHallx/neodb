@@ -1,13 +1,17 @@
+import json
 import re
 
 import django_rq
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import BadRequest, PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from lxml import html as lxml_html
 from rq.job import Job
 
 from common.models import int_
@@ -23,8 +27,9 @@ from journal.models.rating import Rating
 from users.views import query_identity
 
 from ..common.sites import AbstractSite, SiteManager
-from ..models import ExternalResource, ItemCategory, SiteName, item_categories
+from ..models import ExternalResource, Item, ItemCategory, SiteName, item_categories
 from ..search import ExternalSources, enqueue_fetch, get_fetch_lock, query_index
+from ..sites.rateyourmusic import RateYourMusic
 
 _VISIBLE_CATEGORIES = None
 
@@ -62,6 +67,18 @@ def fetch_refresh(request, job_id):
 
 
 def fetch(request, url, site: AbstractSite | None, is_refetch: bool = False):
+    # Check if this is a RateYourMusic URL - if so, use browser-based fetch
+    if site and isinstance(site, RateYourMusic):
+        # Show the Cloudflare verification page
+        return render(
+            request,
+            "fetch_cloudflare_verify.html",
+            {
+                "rym_url": url,
+                "source": site.SITE_NAME.label,
+            },
+        )
+
     item = site.get_item(allow_rematch=False) if site else None
     if item and not is_refetch:
         return redirect(item.url)
@@ -208,3 +225,69 @@ def refetch(request):
     ):
         raise PermissionDenied(_("Editing this item is restricted."))
     return fetch(request, url, site, True)
+
+
+@login_required
+@require_http_methods(["POST"])
+def fetch_via_browser(request):
+    """
+    Handle fetching content via the user's browser.
+    This bypasses Cloudflare by using the browser's fetch API.
+    """
+    try:
+        data = json.loads(request.body)
+        url = data.get("url")
+        html_content = data.get("html")
+
+        if not url:
+            return JsonResponse({"success": False, "error": "URL is required"})
+
+        if not html_content:
+            return JsonResponse({"success": False, "error": "HTML content is required"})
+
+        # Get the site adapter
+        site = SiteManager.get_site_by_url(url, detect_redirection=False)
+        if not site or not isinstance(site, RateYourMusic):
+            return JsonResponse({"success": False, "error": "Invalid RateYourMusic URL"})
+
+        try:
+            # Parse the HTML using lxml
+            content = lxml_html.fromstring(html_content)
+
+            # Extract data directly from HTML using the site's method
+            resource_content = site._extract_from_html(content)
+
+            # Create or update external resource
+            resource = site.get_resource()
+            if not resource:
+                resource = ExternalResource.objects.create(
+                    id_type=site.ID_TYPE,
+                    id_value=site.id_value,
+                    url=site.url,
+                )
+
+            resource.update_content(resource_content)
+
+            # Get or create item
+            item = site.get_item(allow_rematch=True)
+            if not item:
+                from ..models import Album
+                item = Album.create_from_external_resource(resource)
+
+            return JsonResponse({
+                "success": True,
+                "item_url": item.url if item else "/",
+            })
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                "success": False,
+                "error": f"Failed to parse HTML: {str(e)}"
+            })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return JsonResponse({"success": False, "error": str(e)})

@@ -1,0 +1,305 @@
+{% load static %}
+{% load i18n %}
+{% load l10n %}
+{% load humanize %}
+{% load mastodon %}
+{% load thumb %}
+{% get_current_language as LANGUAGE_CODE %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}" class="classic-page">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ site_name }} - {% trans 'Cloudflare Verification Required' %}</title>
+    {% include "common_libs.html" %}
+    <style>
+      .verification-container {
+        max-width: 800px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+      }
+      .verification-steps {
+        text-align: left;
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background: white;
+        border-radius: 4px;
+        border-left: 4px solid #007bff;
+      }
+      .verification-steps ol {
+        margin-left: 1.5rem;
+        margin-top: 1rem;
+      }
+      .verification-steps li {
+        margin: 0.75rem 0;
+      }
+      .verify-button {
+        background: #007bff;
+        color: white;
+        padding: 1rem 2rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 1.1rem;
+        margin: 1rem 0;
+        display: block;
+        width: 100%;
+        max-width: 400px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .verify-button:hover:not(:disabled) {
+        background: #0056b3;
+      }
+      .verify-button:disabled {
+        background: #6c757d;
+        cursor: not-allowed;
+      }
+      .status-message {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 4px;
+        text-align: center;
+      }
+      .status-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .status-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      .status-info {
+        background: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+      #verification-iframe {
+        width: 100%;
+        height: 600px;
+        border: 2px solid #ddd;
+        border-radius: 4px;
+        margin: 1rem 0;
+        display: none;
+        background: white;
+      }
+      .iframe-container {
+        margin: 2rem 0;
+      }
+      .loading-spinner {
+        text-align: center;
+        padding: 2rem;
+      }
+      .fa-spin {
+        animation: fa-spin 1s infinite linear;
+      }
+      @keyframes fa-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    {% include '_header.html' %}
+    <main>
+      <div class="grid__main">
+        <article>
+          <div class="verification-container">
+            <h3 style="text-align: center;">🔐 {% trans "Cloudflare Verification Required" %}</h3>
+
+            <p style="text-align: center; margin: 1rem 0;">
+              {% blocktrans with site="RateYourMusic" %}
+                {{ site }} is protected by Cloudflare. Your browser will help us bypass this protection.
+              {% endblocktrans %}
+            </p>
+
+            <div class="verification-steps">
+              <h4>{% trans "How it works:" %}</h4>
+              <ol>
+                <li>{% trans "Click the button below to load RateYourMusic in your browser" %}</li>
+                <li>{% trans "If Cloudflare shows a verification challenge, complete it" %}</li>
+                <li>{% trans "Once the page loads successfully, we'll automatically fetch the data" %}</li>
+                <li>{% trans "You'll be redirected to the album page" %}</li>
+              </ol>
+              <p style="margin-top: 1rem; font-size: 0.9rem; color: #666;">
+                <strong>{% trans "Note:" %}</strong>
+                {% trans "This uses your browser to fetch the page, which automatically handles Cloudflare protection." %}
+              </p>
+            </div>
+
+            <button class="verify-button" id="verify-btn" onclick="startVerification()">
+              <i class="fa-solid fa-shield-halved"></i>
+              {% trans "Start Browser Verification" %}
+            </button>
+
+            <div id="status-message" class="status-message" style="display: none;"></div>
+
+            <div class="iframe-container" id="iframe-container" style="display: none;">
+              <p style="text-align: center; margin-bottom: 1rem;">
+                <strong>{% trans "RateYourMusic is loading below. Please wait..." %}</strong>
+              </p>
+              <iframe id="verification-iframe" src="about:blank"></iframe>
+            </div>
+          </div>
+        </article>
+      </div>
+      <aside class="grid__aside bottom">
+        {% include "_sidebar_search.html" %}
+      </aside>
+    </main>
+    {% include '_footer.html' %}
+
+    <script>
+      const RYM_URL = "{{ rym_url }}";
+      const FETCH_VIA_BROWSER_URL = "{% url 'catalog:fetch_via_browser' %}";
+      const CSRF_TOKEN = getCookie('csrftoken');
+      let iframe = null;
+      let checkInterval = null;
+      let attemptCount = 0;
+      const MAX_ATTEMPTS = 3;
+
+      function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+          const cookies = document.cookie.split(';');
+          for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+              cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+              break;
+            }
+          }
+        }
+        return cookieValue;
+      }
+
+      function showStatus(message, type, showSpinner = false) {
+        const statusDiv = document.getElementById('status-message');
+        statusDiv.innerHTML = showSpinner ?
+          `<i class="fa-solid fa-compact-disc fa-spin"></i> ${message}` :
+          message;
+        statusDiv.className = 'status-message status-' + type;
+        statusDiv.style.display = 'block';
+      }
+
+      function startVerification() {
+        const btn = document.getElementById('verify-btn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> {% trans "Loading..." %}';
+
+        showStatus('{% trans "Loading RateYourMusic in your browser..." %}', 'info', true);
+
+        // Show iframe container
+        document.getElementById('iframe-container').style.display = 'block';
+
+        // Load RYM in iframe
+        iframe = document.getElementById('verification-iframe');
+        iframe.style.display = 'block';
+        iframe.src = RYM_URL;
+
+        // Start monitoring iframe loading
+        iframe.onload = handleIframeLoad;
+      }
+
+      async function handleIframeLoad() {
+        attemptCount++;
+
+        try {
+          // Try to check if iframe loaded successfully
+          // Note: We can't access cross-origin iframe content, but we can detect if it loaded
+
+          showStatus('{% trans "Page loaded! Fetching content..." %}', 'success', true);
+
+          // Use the browser to fetch the content
+          await fetchViaUserBrowser();
+
+        } catch (error) {
+          console.error('Error in iframe load:', error);
+
+          if (attemptCount < MAX_ATTEMPTS) {
+            showStatus(`{% trans "Retrying..." %} (${attemptCount}/${MAX_ATTEMPTS})`, 'info', true);
+            setTimeout(() => {
+              iframe.src = RYM_URL + '?retry=' + attemptCount;
+            }, 2000);
+          } else {
+            showStatus('{% trans "Unable to load. Please try again later or contact support." %}', 'error');
+            document.getElementById('verify-btn').disabled = false;
+            document.getElementById('verify-btn').innerHTML = '{% trans "Try Again" %}';
+          }
+        }
+      }
+
+      async function fetchViaUserBrowser() {
+        try {
+          showStatus('{% trans "Your browser is fetching the content... Please wait." %}', 'info', true);
+
+          // Make a fetch request from the user's browser
+          // This will automatically include any Cloudflare cookies
+          const response = await fetch(RYM_URL, {
+            method: 'GET',
+            credentials: 'include',  // Include cookies
+            headers: {
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const html = await response.text();
+
+          // Send the HTML to our server for parsing
+          await sendHtmlToServer(html);
+
+        } catch (error) {
+          console.error('Error fetching via browser:', error);
+          showStatus('{% trans "Error fetching content. This may be due to CORS restrictions or network issues." %}', 'error');
+
+          // Show helpful message
+          setTimeout(() => {
+            showStatus('{% trans "Please try again. If the problem persists, contact support." %}', 'error');
+          }, 2000);
+        }
+      }
+
+      async function sendHtmlToServer(html) {
+        try {
+          showStatus('{% trans "Processing data on server..." %}', 'info', true);
+
+          const response = await fetch(FETCH_VIA_BROWSER_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-CSRFToken': CSRF_TOKEN
+            },
+            body: JSON.stringify({
+              url: RYM_URL,
+              html: html
+            })
+          });
+
+          const data = await response.json();
+
+          if (data.success) {
+            showStatus('{% trans "Success! Redirecting to album page..." %}', 'success');
+            setTimeout(() => {
+              window.location.href = data.item_url;
+            }, 1500);
+          } else {
+            showStatus(`{% trans "Error:" %} ${data.error || '{% trans "Unknown error" %}'}`, 'error');
+          }
+
+        } catch (error) {
+          console.error('Error sending HTML to server:', error);
+          showStatus('{% trans "Error processing data. Please try again." %}', 'error');
+        }
+      }
+
+    </script>
+  </body>
+</html>
